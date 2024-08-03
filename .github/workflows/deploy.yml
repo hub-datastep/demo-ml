@@ -22,7 +22,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script_stop: true
           script: |
-            cd ~/datastep/demo-backend/
+            cd ~/datastep/demo-ml/
             git checkout main
             git pull
 
