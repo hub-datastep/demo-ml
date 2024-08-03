@@ -1,0 +1,19 @@
+# Environment
+.env
+venv/
+
+# Logs
+*log
+
+# Python cache
+__pycache__/
+
+# IDEA
+.idea/
+.vscode/
+
+# ML model files
+data/ner_model
+
+# Classifier files
+data/model_*
