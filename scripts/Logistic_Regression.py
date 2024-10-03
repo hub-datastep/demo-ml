@@ -1,5 +1,5 @@
 from sklearn.ensemble import RandomForestClassifier
-import training_model
+import scripts.base as base
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -7,10 +7,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import make_pipeline
 
-class ModelRegres(training_model.ModelPipeline):
+class ModelRegres(base.ModelPipeline):
     def __init__(self) -> None:
         super().__init__()
-        self._model_path = "model/model_unistroi_RandomForestClassifier.pkl"
+        self._model_path = "model/model_unistroi_LogisticRegression.pkl"
     def model_pipeline(self, X_train, y_train):
         # Build pipeline with stacking
         pipeline = make_pipeline(
