@@ -90,5 +90,6 @@ class ModelPipeline:
         s = self.read_excel_columns(self.file_dataset_path, self.file_dataset_column)
         print(s)
 
+
 m = ModelPipeline()
 print(m.get_test_data())
