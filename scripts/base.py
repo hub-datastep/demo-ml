@@ -1,19 +1,18 @@
-import os
 import time
 import joblib
 import numpy as np
 import pandas as pd
+from google_uploader import GoogleUploader
 from sklearn.calibration import LabelEncoder
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import GridSearchCV
-from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.pipeline import make_pipeline
+from sklearn.metrics import classification_report, confusion_matrix
+
 
 class ModelPipeline:
     def __init__(self) -> None:
+        self._project = 'Унистрой'
+        self._dir      = 'week41'
+
         self._file_dataset_path = f"datasets/ynistroi.xlsx"
         self._file_dataset_sheet = "Лист1"
         self._file_dataset_column = ["name", "group"]
@@ -41,6 +40,12 @@ class ModelPipeline:
         self._texts = 0
         self._true_labels = 0
 
+    def __init_google_drive(self):
+        self.drive = GoogleUploader(parent_folder_name=self._project, new_folder_name=self._dir, files=[self._file_dataset_path, self._file_test_input_path,self._file_test_output_path, self._model_path])
+    
+    def __upload_to_google_drive(self):
+        print(self.drive.upload_files_to_path())
+    
     def read_excel_columns(self, file_path, columns, sheet):
         try:
             df = pd.read_excel(file_path, usecols=columns, sheet_name=sheet)
@@ -146,6 +151,7 @@ class ModelPipeline:
         print(self._conf_matrix)
     
     def run(self):
+        self.__init_google_drive()
         start_time = time.time()
 
         self.get_train_data()
@@ -157,4 +163,5 @@ class ModelPipeline:
         end_time = time.time()
         self._execution_time = end_time - start_time
         self.save_bin() # время выполнения
+        self.__upload_to_google_drive()
         print(f"Время выполнения: {self._execution_time} с.")

@@ -14,6 +14,7 @@ class ModelRegres(base.ModelPipeline):
         self._model_path = "model/model_unistroi_LogisticRegression2.pkl"
         self._file_dataset_sheet = 'main'
         self._file_test_output_path = 'output_test/model_unistroi_LogisticRegression2.xlsx'
+        self._file_dataset_path = "datasets/train_dataset_unistroi+sintetic.xlsx"
     def model_pipeline(self, X_train, y_train):
         # Build pipeline with stacking
         pipeline = make_pipeline(

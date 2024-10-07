@@ -17,3 +17,6 @@ data/ner_model
 
 # Classifier files
 data/model_*
+
+drive.pkl
+client_secrets.json
