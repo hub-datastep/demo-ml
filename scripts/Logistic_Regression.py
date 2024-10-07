@@ -1,5 +1,6 @@
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
-import scripts.base as base
+import base
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -10,19 +11,20 @@ from sklearn.pipeline import make_pipeline
 class ModelRegres(base.ModelPipeline):
     def __init__(self) -> None:
         super().__init__()
-        self._model_path = "model/model_unistroi_LogisticRegression.pkl"
+        self._model_path = "model/model_unistroi_LogisticRegression2.pkl"
+        self._file_dataset_sheet = 'main'
+        self._file_test_output_path = 'output_test/model_unistroi_LogisticRegression2.xlsx'
     def model_pipeline(self, X_train, y_train):
         # Build pipeline with stacking
         pipeline = make_pipeline(
             TfidfVectorizer(),
-            LogisticRegression(max_iter=1000)
+            StandardScaler(with_mean=False),
+            LogisticRegression()
         )
 
-        # Set up parameter grid for GridSearchCV
         param_grid = {
-            'tfidfvectorizer__ngram_range': [(1,1), (1,2)],
-            'tfidfvectorizer__max_df': [0.85, 0.9, 1.0],
-            'tfidfvectorizer__min_df': [1, 5],
+            'logisticregression__C': [0.01, 0.1, 1, 10],
+            'tfidfvectorizer__max_df': [0.9, 0.95],
         }
 
         grid_search = GridSearchCV(
