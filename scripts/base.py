@@ -22,7 +22,7 @@ class ModelPipeline:
         self._file_test_input_column = ["Номенклатура поставщика", "Ожидание группа"]
 
         self._file_test_output_path = f"output_test/Classifier_test-case_unistroi.xlsx"
-        self._file_test_output_column = ['NOMs','GROUP', 'II', 'T|F']
+        self._file_test_output_column = ['NOMs','GROUP', 'AI', 'T|F']
 
         self._model_path = "model/model_unistroi.pkl"
 
