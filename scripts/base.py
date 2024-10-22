@@ -11,7 +11,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 class ModelPipeline:
     def __init__(self) -> None:
         self._project = 'Унистрой'
-        self._dir      = 'week41'
+        self._dir      = 'week43'
 
         self._file_dataset_path = f"datasets/ynistroi.xlsx"
         self._file_dataset_sheet = "Лист1"
