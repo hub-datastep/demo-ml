@@ -41,7 +41,7 @@ class ModelPipeline:
         self._true_labels = 0
 
     def __init_google_drive(self):
-        self.drive = GoogleUploader(parent_folder_name=self._project, new_folder_name=self._dir, files=[self._file_dataset_path, self._file_test_input_path,self._file_test_output_path, self._model_path])
+        self.drive = GoogleUploader(parent_folder_path=self._project, new_folder_name=self._dir, files=[self._file_dataset_path, self._file_test_input_path,self._file_test_output_path, self._model_path])
     
     def __upload_to_google_drive(self):
         print(self.drive.upload_files_to_path())

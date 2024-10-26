@@ -1,39 +1,34 @@
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 import os
-import pickle
 from datetime import datetime
 
 class GoogleUploader:
-    def __init__(self, parent_folder_name, new_folder_name, files, auth_file='drive.pkl'):
+    def __init__(self, parent_folder_path, new_folder_name, files, auth_file='credentials.json'):
         self.auth_file = auth_file
-        self.parent_folder_name, self.new_folder_name, self.files = parent_folder_name, new_folder_name, files
-        
-        # Попробуем загрузить сохранённую авторизацию
-        if os.path.exists(self.auth_file):
-            try:
-                with open(self.auth_file, 'rb') as f:
-                    self.drive = pickle.load(f)
-                print("Authorization loaded from file.")
-            except Exception as e:
-                print(f"Failed to load authorization from file: {e}")
-                self._authenticate_and_save()
-        else:
-            self._authenticate_and_save()
+        self.parent_folder_path, self.new_folder_name, self.files = parent_folder_path, new_folder_name, files
 
-    def _authenticate_and_save(self):
-        """Авторизуемся через Google и сохраняем сессию в файл."""
+        self._authenticate()
+
+    def _authenticate(self):
+        """Авторизуемся через Google и сохраняем учетные данные в файл."""
         try:
             self.gauth = GoogleAuth()
-            self.gauth.LocalWebserverAuth()
+            self.gauth.LoadCredentialsFile(self.auth_file)
+            if self.gauth.credentials is None:
+                # Аутентифицируемся, если учетные данные отсутствуют
+                self.gauth.LocalWebserverAuth()
+            elif self.gauth.access_token_expired:
+                # Обновляем токен, если он истек
+                self.gauth.Refresh()
+            else:
+                # Инициализируем сохраненные учетные данные
+                self.gauth.Authorize()
+            self.gauth.SaveCredentialsFile(self.auth_file)
             self.drive = GoogleDrive(self.gauth)
-            
-            # Сохраняем авторизацию в файл
-            with open(self.auth_file, 'wb') as f:
-                pickle.dump(self.drive, f)
-            print("Authorization saved to file.")
+            print("Authentication successful.")
         except Exception as e:
-            print(f"Failed to authenticate and save session: {e}")
+            print(f"Failed to authenticate: {e}")
 
     def create_folder(self, parent_folder_id, folder_name):
         """Создает папку на Google Drive в указанной директории."""
@@ -47,25 +42,26 @@ class GoogleUploader:
             folder.Upload()
             return folder['id']
         except Exception as _ex:
-            return f'Got some trouble creating folder, check your code please! Error: {_ex}'
+            print(f'Got some trouble creating folder, check your code please! Error: {_ex}')
+            return None
 
     def upload_files_to_path(self):
         """
-        Загружает файлы в директорию Google Drive по пути (какая-то папка)/(созданная нами директория).
+        Загружает файлы в директорию Google Drive по указанному пути.
         Если директория уже существует, добавляет к названию директории дату и время.
         Аргументы:
-        parent_folder_name - имя существующей папки;
+        parent_folder_path - путь к существующей папке;
         new_folder_name - имя создаваемой папки;
         files - список файлов для загрузки.
         """
         try:
             # Получить ID папки родителя
-            parent_folder_id = self.get_folder_id_by_name(self.parent_folder_name)
+            parent_folder_id = self.get_folder_id_by_path(self.parent_folder_path)
             if not parent_folder_id:
-                return f'Parent folder "{self.parent_folder_name}" not found.'
+                return f'Parent folder "{self.parent_folder_path}" not found.'
 
             # Проверка, существует ли уже папка с таким именем
-            existing_folder_id = self.get_folder_id_by_name(self.new_folder_name)
+            existing_folder_id = self.get_folder_id_by_name(self.new_folder_name, parent_folder_id)
             if existing_folder_id:
                 # Добавляем дату и время, если такая папка существует
                 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
@@ -91,25 +87,45 @@ class GoogleUploader:
         except Exception as _ex:
             return f'Got some trouble, check your code please! Error: {_ex}'
 
-    def get_folder_id_by_name(self, folder_name):
-        """Ищет папку на Google Drive по имени и возвращает её ID."""
+    def get_folder_id_by_name(self, folder_name, parent_id='root'):
+        """Ищет папку на Google Drive по имени и ID родительской папки, возвращает её ID."""
         try:
             folder_list = self.drive.ListFile(
-                {'q': f"title = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed=false"}
+                {'q': f"'{parent_id}' in parents and title = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed=false"}
             ).GetList()
             if folder_list:
                 return folder_list[0]['id']
             return None
         except Exception as _ex:
-            return f'Got some trouble, check your code please! Error: {_ex}'
+            print(f'Got some trouble, check your code please! Error: {_ex}')
+            return None
+
+    def get_folder_id_by_path(self, folder_path):
+        """Ищет папку на Google Drive по пути и возвращает её ID."""
+        try:
+            folder_names = folder_path.strip('/').split('/')
+            parent_id = 'root'
+            for folder_name in folder_names:
+                folder_id = self.get_folder_id_by_name(folder_name, parent_id)
+                if folder_id:
+                    parent_id = folder_id
+                else:
+                    return None
+            return parent_id
+        except Exception as _ex:
+            print(f'Got some trouble, check your code please! Error: {_ex}')
+            return None
 
 # Пример использования
 if __name__ == '__main__':
-    uploader = GoogleUploader( parent_folder_name='NER',  # Имя существующей папки
-        new_folder_name='TestFolder',         # Имя создаваемой папки
-        files=['file/Classifier_ unistroy UTDs test-cases (fix)_30.09.2024.xlsx', 'file/Classifier_test-case_unistroi.xlsx']  # Список путей к файлам
+    uploader = GoogleUploader(
+        parent_folder_path='LevelGroup/ML Data',  # Путь к существующей папке
+        new_folder_name='TestFolder',             # Имя создаваемой папки
+        files=[
+            'datasets\\LevelGroup Материалы НСИ from 01-10-2024.xlsx',
+            'datasets\\LevelGroup_ fixed NSI groups by Dima.xlsx'
+        ]  # Список путей к файлам
     )
     
     # Загрузить файлы в новую папку в Google Drive
-    print(uploader.upload_files_to_path(
-       ))
+    print(uploader.upload_files_to_path())
