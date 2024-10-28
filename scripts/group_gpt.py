@@ -1,124 +1,99 @@
-import re
-import pandas as pd
-from datetime import datetime
 from langchain.chains.llm import LLMChain
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import AzureChatOpenAI
 
+import os
 
-DOCS_PROMPT_TEMPLATE = """# Роль
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DOCS_PROMPT_TEMPLATE = """### Роль
 инженер ПТО (производственно-технического отдела)
 
-# Данные которые получишь на вход:
-- список номенклатур из спецификации
+### Данные которые получишь на вход:
+- номенклатура из спецификации
 - группа с обобщенной формулировкой, к которой подходят все номенклатуры
 - список более точных групп из которых надо будет выбрать группу для каждой номенклатуры
 
 Формат входных данных:
-{
-"nomenclatures": ["номенклатура1", "номенклатура2", "номенклатура3"],
-"generalized group":"обобщённая группа",
+{{
+"nomenclature": "номенклатура",
+"generalized group": "обобщённая группа",
 "precise groups" : ["точная группа1", "точная группа2"]
-}
+}}
 
 
-# Задача
+### Задача
 выбрать наиболее подходящую точную группу к обобщенной группе и каждой отдельной номенклатуре
 
-# Не забывай что:
+### Не забывай:
 1. Посмотри на пример номенклатур в каждом классе:
 {json_example}
-
-2. Если номенклатура не подходит к группе писать “ошибка сопоставления”
-3. Обращать внимание на параметры в номенклатуре
-4. Отвечай кратко
-5. Ответ в формате json:
-{
- "1": "точная группа для номенклатуры 1",
- "2": "точная группа для номенклатуры 2",
- "3": "точная группа для номенклатуры 3"
-}
+2. Обращать внимание на параметры в номенклатуре
+3. Отвечай кратко
+4. Ответ в формате json:
+{{
+ "group": "точная группа для номенклатуры 1"
+}}
 
 
-# Пример
+### Пример
 Пример входных данных:
-{
-  "nomenclatures": ["труба 100*150 противопожарная", "труба 200*150 противопожарная", "труба 200*150 d=25 для кранов и санузлов"],
-  "generalized group":"трубы",
+{{
+  "nomenclature": "труба 200*150 d=25 для кранов и санузлов",
+  "generalized group": "трубы",
   "precise groups" : ["трубы металлические","трубы противопожарные", "трубы сантехнические"]
-}
+}}
 
 
 Пример правильного ответа:
-{
- "1": "трубы противопожарные",
- "2": "трубы противопожарные",
- "3": "трубы сантехнические"
-}
+{{
+ "group": "трубы сантехнические"
+}}
 
 
-# Вход
-{
-  "nomenclatures": {nomenclatures},
+### Вход
+{{
+  "nomenclature": {nomenclature}
   "generalized group": {generalized_group},
   "precise groups" : {precise_groups}
-} 
-"""
+}}"""
+
+# Подставьте ваш JSON пример
+json_example = """{{
+'Насосные станции Материалы': ['Насосная станция 2 го подьема (НС II) «Подача исходной воды» Aikon PBS3CDM85-3-2C16FS+PDH10, PDG min', 'Насосная станция 3 го подъема (НС III) «Подача очищенной воды» Aikon PBS3CDMF85-4-2C16FS+PDH10, PDG ', 'Насосная станция 4 го подъема (НС IV) «Промывка системы обезжелезивания» Aikon PBS2CDMF65-2C16FS+PDH', 'Насосная станция 5 го подъема (НС V) «Подача воды на 2-ю ступень СОО» Aikon PBS3CDMF65-2-1C16FS+PDH1', 'Насосная станция пожаротушения  Aikon PFFS 2 NES80-65-260-37/2 ', 'Станция пожаротушения', 'Станция хозяйственно-питьевого водоснабжения'],
+'Каркас': ['Каркас КРП-2', 'Каркас КРП-3', 'Каркас КРП-4', 'Каркас КРП-5', 'Каркас С1', 'Каркас С2'],
+'Гидроизоляционные материалы Материалы': ['Битумная рулонная гидроизоляция верхний слой', 'Битумная рулонная гидроизоляция нижний слой', 'Битумная рулонная пароизоляция (на монолитную или жб плиту)', 'Мастика гидроизоляционная', 'Мастика кровельная', 'Мастика приклеивающая', 'Праймер', 'Рулонная парогидроизоляция (на плиту 1 слой)', 'Смесь гидроизоляционная'],
+'Электрика': ['Труба гофрированная двустенная с кольцевой жесткостью SN6 Ø=110мм', 'Труба гофрированная двустенная с кольцевой жесткостью SN6 Ø=200мм', 'Труба гофрированная двустенная с кольцевой жесткостью SN6 Ø=63мм', 'Труба двустенная с кольцевой жесткостью SN24 Ø=110мм', 'Труба двустенная с кольцевой жесткостью SN24 Ø=200мм', 'Труба двустенная с кольцевой жесткостью SN64 Ø=400мм', 'Труба двустенная с кольцевой жесткостью SN64 Ø=630мм'],
+'Звукоизоляционные материалы Материалы':  ['Битумное полиэфирное полотно - Фибиол Стандарт (звукоизоляция)', 'ЗИПС панели', 'Маты базальтовые', 'Маты из минеральной ваты', 'Маты песчаные', 'Напольная рулонная звукоизоляция из  химически сшитого пенополиэтилена 8 мм', 'Напольная рулонная звукоизоляция из пенополиэтилена 10 мм', 'Напольная рулонная звукоизоляция из пенополиэтилена 5 мм', 'Напольная рулонная звукоизоляция из пенополиэтилена 6 мм', 'Напольная рулонная звукоизоляция из пенополиэтилена 8 мм', 'Напольная рулонная звукоизоляция из экструзионного вспененного полипропилена 10 мм', 'Напольная рулонная звукоизоляция из экструзионного вспененного полипропилена 5 мм', 'Напольная рулонная звукоизоляция из экструзионного вспененного полипропилена 6 мм', 'Напольная рулонная звукоизоляция из экструзионного вспененного полипропилена 8 мм', 'Плиты из гидрофобизированного штапельного стекловолокна', 'Скотч для звукоизоляции']
+}}"""
+
+nomenclatures = ["Каркас С1 (БС-3)", "Каркас С1 (БС-4)", "Каркас С2 (БС-6)", "Труба гофрированная одностенная Ø=120мм с кольцевой жесткостью SN2", "Мастика приклеивающая", "Рулонная парогидроизоляция (на плиту 1 слой)", "Смесь гидроизоляционная", "Битумное полиэфирное полотно - Фибиол Стандарт (звукоизоляция)"]
+generalized_group = '"any"'
+precise_groups = """["Гидроизоляционные материалы Материалы", "Звукоизоляционные материалы Материалы", "Каркас", "Электрика", "Насосные станции Материалы"]"""
 
 def get_emergency_class_chain():
     llm = AzureChatOpenAI(
-        azure_deployment="gpt-4-0125-preview-db-assistant",
+        azure_deployment=os.getenv("AZURE_DEPLOYMENT_NAME_NOMENCLATURE_CLASSIFIER"),
         temperature=0,
         verbose=False,
-    
     )
 
     prompt = PromptTemplate(
         template=DOCS_PROMPT_TEMPLATE,
-        input_variables=["query"]
+        input_variables=["json_example", "nomenclature", "generalized_group", "precise_groups"]
     )
 
     return LLMChain(llm=llm, prompt=prompt)
+from json import loads
+def predict(noms: list) -> list:
+    strs = []
+    for i in noms:
+        chain = get_emergency_class_chain()
+        c = loads(chain.run(json_example=json_example, nomenclature=i, generalized_group=generalized_group, precise_groups=precise_groups))['group']
+        print(c)
+        strs.append(c)   
+    return strs
 
-def normalize_resident_request_string(text):
-    return (lambda s: re.sub(r'\s+', ' ', re.sub(r'http\S+', '', s.replace('\n', ' ').replace('Прикрепите фото:', ''))))(text)
-
-def get_emergency_class(text):
-    text = normalize_resident_request_string(text)
-    chain = get_emergency_class_chain()
-    answer: str = chain.run(query=text)
-    return answer
-
-def save_to_excel(data, column_names=['Emergency', 'Class', 'Truth', 'Time'], file_name='test_case_yk.xlsx'):
-    try:
-        # Преобразуем массив в DataFrame
-        df = pd.DataFrame(data)
-        
-        # Сохраняем DataFrame в Excel файл
-        df = pd.DataFrame(data, columns=column_names)
-        df.to_excel(file_name, index=False)
-        
-        return True
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return False
-    
-def testing():
-    s = datetime.now()
-    f = open('C:\\Users\\Dmitry\\Desktop\\test_yk.csv', encoding='utf-8').read().strip().replace('\ufeff','').replace('\n"', ';";').split(';";')
-    test_case = []
-    g = []
-    for i in range(0, len(f),2):
-        g.append([f[i], 'аварийная' if int(f[i+1]) else 'обычная'])
-    # g = g[:2]
-    for i in g:
-        s_c = datetime.now()
-        c = get_emergency_class(i[0])
-        if c == i[1]:
-            test_case.append([i[0], i[1], '1', datetime.now() - s_c])
-        else:
-            test_case.append([i[0], i[1], '0', datetime.now() - s_c])
-    print(datetime.now() - s)
-    return save_to_excel(test_case)
-
-print(testing())
+print(predict(nomenclatures))
