@@ -8,10 +8,14 @@ from sklearn.pipeline import make_pipeline
 class ModelRegres(base.ModelPipeline):
     def __init__(self) -> None:
         super().__init__()
-        self._model_path = "model/model_unistroi_LogisticRegression+syntetics+clear_big_class+not_lestnitsa.pkl"
+        self._dir = 'fix_dataset+no_staircases+synthetic+synthetic'
+        self._model_path = "model/model_unistroi_LogisticRegression+new+no_staircases+synthetic.pkl"
+
+        self._file_dataset_path = "datasets/train_dataset_unistroi_new+no_staircases+synthetic.xlsx"
         self._file_dataset_sheet = 'main'
-        self._file_test_output_path = 'output_test/test_model_unistroi_LogisticRegression+syntetics+clear_big_class+not_lestnitsa.xlsx'
-        self._file_dataset_path = "datasets\\train_dataset_unistroi+syntetics+clear_big_class+not_lestnitsa.xlsx"
+        self._file_dataset_column = ["noms","class"]
+
+        self._file_test_output_path = 'output_test/test_model_unistroi_LogisticRegression+new+no_staircases+synthetic.xlsx'
         self._file_test_input_sheet = 'test-cases2'
     def model_pipeline(self, X_train, y_train):
         # Build pipeline with stacking
