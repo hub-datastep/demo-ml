@@ -15,7 +15,7 @@ from sklearn.utils.class_weight import compute_class_weight
 class ModelPipeline:
     def __init__(self) -> None:
         self._project = 'Унистрой'
-        self._dir      = 'test_pytorch'
+        self._dir      = 'week43'
 
         self._file_dataset_path = f"datasets/ynistroi.xlsx"
         self._file_dataset_sheet = "Лист1"
@@ -42,15 +42,21 @@ class ModelPipeline:
         self._accuracy = None
 
         self._X_train_texts = None
+        self._X_val_texts = None
         self._X_test_texts = None
         self._y_train = None
+        self._y_val = None
         self._y_test = None
         self._texts = None
         self._true_labels = None
-        self._model_path = "model/model_unistroi_LogisticRegression+syntetics+clear_big_class+not_lestnitsa.pkl"
+        self._dir = 'fix_dataset+no_staircases+pytorch+synthetic_old'
+        self._model_path = "model/model_unistroi_pytorch+new+no_staircases+synthetic.pkl"
+
+        self._file_dataset_path = "datasets/train_dataset_unistroi+syntetics+clear_big_class+not_lestnitsa.xlsx"
         self._file_dataset_sheet = 'main'
-        self._file_test_output_path = 'output_test/test_model_unistroi_LogisticRegression+syntetics+clear_big_class+not_lestnitsa.xlsx'
-        self._file_dataset_path = "datasets\\train_dataset_unistroi+syntetics+clear_big_class+not_lestnitsa.xlsx"
+        self._file_dataset_column = ["name","group"]
+
+        self._file_test_output_path = 'output_test/test_model_unistroi_pytorch+new+no_staircases+synthetic.xlsx'
         self._file_test_input_sheet = 'test-cases2'
 
     def __init_google_drive(self):
@@ -96,14 +102,20 @@ class ModelPipeline:
         # Кодирование меток
         y_encoded = np.array([self._label_to_index[label] for label in y])
 
-        # Разделение данных на обучающую и тестовую выборки
-        self._X_train_texts, self._X_test_texts, self._y_train, self._y_test = train_test_split(
+        # Разделение данных на обучающую и временную выборки (для дальнейшего разделения на валидацию и тест)
+        X_temp_texts, self._X_test_texts, y_temp, self._y_test = train_test_split(
             X, y_encoded, test_size=0.2, stratify=y_encoded, random_state=42
+        )
+
+        # Дополнительное разделение на обучающую и валидационную выборки
+        self._X_train_texts, self._X_val_texts, self._y_train, self._y_val = train_test_split(
+            X_temp_texts, y_temp, test_size=0.1, stratify=y_temp, random_state=42
         )
 
         # Инициализация TF-IDF Vectorizer
         self._vectorizer = TfidfVectorizer(max_df=0.95)
         self._X_train_features = self._vectorizer.fit_transform(self._X_train_texts)
+        self._X_val_features = self._vectorizer.transform(self._X_val_texts)
         self._X_test_features = self._vectorizer.transform(self._X_test_texts)
 
     def get_test_data(self):
@@ -134,7 +146,7 @@ class ModelPipeline:
             "accuracy": self._accuracy
         }
         try:
-            torch.save(data_to_save, self._model_path)
+            joblib.dump(data_to_save, self._model_path)
         except Exception as e:
             print(f'Ошибка сохранения: {e}')
 
@@ -165,9 +177,11 @@ class ModelPipeline:
 
         # Создание датасетов и загрузчиков
         train_dataset = self.TorchDataset(self._X_train_features, self._y_train)
+        val_dataset = self.TorchDataset(self._X_val_features, self._y_val)
         test_dataset = self.TorchDataset(self._X_test_features, self._y_test)
 
         train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=32)
         test_loader = DataLoader(test_dataset, batch_size=32)
 
         # Инициализация модели
@@ -184,11 +198,16 @@ class ModelPipeline:
         class_weights = torch.tensor(class_weights, dtype=torch.float).to(self._device)
 
         criterion = nn.CrossEntropyLoss(weight=class_weights)
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)  # Добавлен weight_decay для L2-регуляризации
 
-        # Обучение модели
-        num_epochs = 10
+        # Параметры обучения
+        num_epochs = 1000  # Увеличено до 1000 эпох
+        early_stopping_patience = 10  # Количество эпох без улучшения до остановки
+        best_val_loss = float('inf')
+        epochs_no_improve = 0
+
         for epoch in range(num_epochs):
+            # Обучение
             model.train()
             total_loss = 0
             for features, labels in train_loader:
@@ -199,11 +218,41 @@ class ModelPipeline:
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
-            print(f"Эпоха {epoch + 1}/{num_epochs}, Потеря: {total_loss / len(train_loader)}")
 
+            avg_train_loss = total_loss / len(train_loader)
+
+            # Валидация
+            model.eval()
+            total_val_loss = 0
+            with torch.no_grad():
+                for features, labels in val_loader:
+                    features, labels = features.to(self._device), labels.to(self._device)
+                    outputs = model(features)
+                    loss = criterion(outputs, labels)
+                    total_val_loss += loss.item()
+
+            avg_val_loss = total_val_loss / len(val_loader)
+            print(f"Эпоха {epoch + 1}/{num_epochs}, Потеря на обучении: {avg_train_loss:.4f}, Потеря на валидации: {avg_val_loss:.4f}")
+
+            # Проверка на улучшение
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                epochs_no_improve = 0
+                # Сохраняем лучшую модель
+                best_model_state = model.state_dict()
+            else:
+                epochs_no_improve += 1
+
+            # Ранняя остановка
+            if epochs_no_improve >= early_stopping_patience:
+                print("Ранняя остановка!")
+                break
+
+        # Загружаем лучшую модель
+        model.load_state_dict(best_model_state)
         self._model = model
 
-        # Оценка модели
+        # Оценка модели на тестовом наборе
         model.eval()
         all_preds = []
         all_labels = []
